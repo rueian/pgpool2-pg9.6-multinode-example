@@ -1,0 +1,8 @@
+postgres ALL=(root) NOPASSWD:/usr/sbin/service postgresql start
+postgres ALL=(root) NOPASSWD:/usr/sbin/service postgresql stop
+postgres ALL=(root) NOPASSWD:/usr/sbin/service postgresql restart
+postgres ALL=(root) NOPASSWD:/usr/sbin/service postgresql reload
+postgres ALL=(root) NOPASSWD:/usr/sbin/service pgpool2 start
+postgres ALL=(root) NOPASSWD:/usr/sbin/service pgpool2 stop
+postgres ALL=(root) NOPASSWD:/usr/sbin/service pgpool2 restart
+postgres ALL=(root) NOPASSWD:/usr/sbin/service pgpool2 reload

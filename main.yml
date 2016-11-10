@@ -1,0 +1,149 @@
+---
+- hosts: all
+  gather_facts: no
+  become: yes
+  pre_tasks:
+    - name: 'locale-gen and install python2'
+      raw: sudo locale-gen zh_TW.UTF-8 && sudo apt-get -y install python-simplejson
+  tasks:
+    - name: add pg apt repo
+      apt_repository: repo='deb http://apt.postgresql.org/pub/repos/apt/ xenial-pgdg main' state=present
+
+    - name: add pg apt repo key
+      apt_key: url=https://www.postgresql.org/media/keys/ACCC4CF8.asc state=present
+
+    - name: add pglogical apt repo
+      apt_repository: repo='deb http://packages.2ndquadrant.com/pglogical/apt/ xenial-2ndquadrant main' state=present
+
+    - name: add pglogical apt repo key
+      apt_key: url=http://packages.2ndquadrant.com/pglogical/apt/AA7A6805.asc state=present
+
+- hosts: pg-cluster
+  gather_facts: no
+  become: yes
+  tasks:
+    - name: install pg
+      apt: name={{item}} state=present update-cache=yes
+      with_items:
+        - postgresql-9.6
+        - postgresql-9.6-pgpool2
+        - postgresql-9.6-pglogical
+
+    - name: prepare archive dir
+      file: path=/mnt/server/archivedir state=directory owner=postgres group=postgres
+
+    - name: upload pg config
+      copy: src=files/postgresql/ dest=/etc/postgresql/9.6/main/ owner=postgres group=postgres mode=0644
+      notify:
+        - restart-pg
+
+    - name: upload pg data scripts
+      copy: src=files/postgresqlData/ dest=/var/lib/postgresql/9.6/main/ owner=postgres group=postgres mode=0755
+      notify:
+        - restart-pg
+
+    - name: start postgresql
+      service: name=postgresql state=started
+
+    - name: Install pgpool-recovery
+      become_user: postgres
+      command: psql -f /usr/share/postgresql/9.6/extension/pgpool-recovery.sql template1
+      ignore_errors: yes
+
+    - name: Install pgpool_adm
+      become_user: postgres
+      command: psql -c 'CREATE EXTENSION IF NOT EXISTS pgpool_adm;' template1
+      ignore_errors: yes
+
+  handlers:
+    - name: restart-pg
+      service: name=postgresql state=restarted
+
+- hosts: pg-master
+  gather_facts: no
+  become: yes
+  tasks:
+    - name: start postgresql
+      service: name=postgresql state=started
+
+- hosts: pg-slave
+  gather_facts: no
+  become: yes
+  tasks:
+    - name: stop postgresql
+      service: name=postgresql state=stopped
+
+- hosts: pg-pool
+  gather_facts: no
+  become: yes
+  tasks:
+    - name: add php5 apt repo
+      apt_repository: repo='ppa:ondrej/php' state=present
+
+    - name: install pgpool2
+      apt: name={{item}} state=present update-cache=yes
+      with_items:
+        - pgpool2
+        - apache2
+        - php5.6
+        - php5.6-mbstring
+        - php5.6-pgsql
+        - libapache2-mod-php5.6
+        - postgresql-client-9.6
+
+    - name: upload pgpool config
+      copy: src=files/pgpool/ dest=/etc/pgpool2/ owner=www-data group=www-data mode=0644
+
+    - name: upload pgpool scripts
+      copy: src=files/pgpoolScripts/ dest=/etc/pgpool2/ owner=postgres group=postgres mode=0755
+
+    - unarchive: src=files/pgpoolAdmin-3.5.3.tar.gz dest=/var/www/html
+
+    - name: upload pgpoolAdmin config
+      copy: src=files/pgpoolAdmin/ dest=/var/www/html/pgpoolAdmin-3.5.3/conf/ owner=www-data group=www-data mode=0644
+
+    - name: prepare pgpoolAdmin templates_c dir
+      file: path=/var/www/html/pgpoolAdmin-3.5.3/templates_c state=directory mode=0777
+
+    - name: upload .pcppass to www-data
+      copy: src=files/pcppass/ dest=/var/www/ owner=www-data group=www-data mode=0600
+
+    - name: upload .pcppass to postgres
+      copy: src=files/pcppass/ dest=/var/lib/postgresql/ owner=postgres group=postgres mode=0600
+
+    - name: restart pgpool
+      service: name=pgpool2 state=restarted
+
+    - name: restart apache2
+      service: name=apache2 state=restarted
+
+    - name: pcp attach node 1
+      become_user: postgres
+      command: pcp_attach_node -w -h localhost -U postgres 1
+
+    - name: pcp attach node 2
+      become_user: postgres
+      command: pcp_attach_node -w -h localhost -U postgres 2
+
+- hosts: postgres-user
+  gather_facts: no
+  become: yes
+  tasks:
+    - name: create .ssh dir
+      become_user: postgres
+      file: path=~/.ssh state=directory
+
+    - name: copy private key
+      become_user: postgres
+      copy: src=files/ssh/postgres_id_rsa dest=~/.ssh/id_rsa owner=postgres group=postgres mode=0600
+
+    - name: copy public key
+      become_user: postgres
+      copy: src=files/ssh/postgres_id_rsa.pub dest=~/.ssh/id_rsa.pub owner=postgres group=postgres mode=0600
+
+    - name: copy authorized keys
+      become_user: postgres
+      copy: src=files/ssh/postgres_id_rsa.pub dest=~/.ssh/authorized_keys owner=postgres group=postgres mode=0600
+
+    - name: copy sudoers
+      copy: src=files/sudoers/postgres dest=/etc/sudoers.d/postgres owner=root group=root mode=0440

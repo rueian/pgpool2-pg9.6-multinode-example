@@ -1,0 +1,6 @@
+.vagrant
+*.retry
+*.log
+.DS_Store
+files/ssh
+files/pgpoolAdmin-3.5.3

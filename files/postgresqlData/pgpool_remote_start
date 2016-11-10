@@ -1,0 +1,7 @@
+#!/bin/sh
+
+REMOTE_HOST=$1
+REMOTE_PGDATA=$2
+
+ssh -T postgres@$REMOTE_HOST "
+sudo service postgresql start"
